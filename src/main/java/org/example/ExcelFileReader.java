@@ -11,7 +11,7 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
-
+import java.util.Set;
 
 public class ExcelFileReader extends JFrame {
 
@@ -66,7 +66,9 @@ public class ExcelFileReader extends JFrame {
             Workbook workbook = new XSSFWorkbook(fis);
             Sheet sheet = workbook.getSheetAt(0);
 
+            Set<String> uniqueData = new HashSet<>();
             ArrayList<String> excelDataList = new ArrayList<>();
+
             Iterator<Row> rowIterator = sheet.rowIterator();
 
             if (rowIterator.hasNext()){
@@ -85,30 +87,29 @@ public class ExcelFileReader extends JFrame {
                     Cell cell = cellIterator.next();
                     String cellValue = getCellValueAsString(cell);
                     excelDataList.add(cellValue);
+                    uniqueData.add(cellValue);
                 }
             }
+            System.out.println("Excel Data List : " + excelDataList);
+            fis.close();
+            workbook.close();
 
-            ArrayList<String> databaseDataList = fetchDataFromDatabase();
-            ArrayList<String> differentDataList = new ArrayList<>();
-            for (String excelData : excelDataList) {
-                if (!databaseDataList.contains(excelData)) {
-                    differentDataList.add(excelData);
-                }
-            }
+            int duplicateCount = excelDataList.size() - uniqueData.size();
 
-            ArrayList<String> uniqueDataList = new ArrayList<>(differentDataList);
+            Set<String> dataFromDatabase = fetchDataFromDatabase();
 
-            differentDataList.clear();
-            differentDataList.addAll(new HashSet<>(uniqueDataList));
+           /* Set<String> duplicateData = new HashSet<>(excelDataList);
+            duplicateData.retainAll(dataFromDatabase);
+            int duplicateCount = duplicateData.size();*/
 
-            int duplicateCount = excelDataList.size() - differentDataList.size();
+            Set<String> uniqueDataToStore = new HashSet<>(excelDataList);
+            uniqueDataToStore.removeAll(dataFromDatabase);
+            storeDifferentDataInDatabase(uniqueDataToStore);
 
-            storeDifferentDataInDatabase(differentDataList);
-
-            logTextArea.setText("Data imported successfully. Duplicate Count : " + duplicateCount);
+            logTextArea.setText("Data imported successfully. Duplicate Count: " + duplicateCount);
 
         } catch (Exception ex) {
-            logTextArea.setText("Error occurred : " + ex.getMessage());
+            logTextArea.setText("Error occurred: " + ex.getMessage());
         }
     }
 
@@ -117,19 +118,18 @@ public class ExcelFileReader extends JFrame {
         if (cell != null) {
             switch (cell.getCellType()) {
                 case STRING:
-                   cellValue = cell.getStringCellValue();
+                    cellValue = cell.getStringCellValue();
                     System.out.println("CellValue : " + cellValue);
                     break;
                 case NUMERIC:
                     if (DateUtil.isCellDateFormatted(cell)) {
-                       cellValue = cell.getDateCellValue().toString();
+                        cellValue = cell.getDateCellValue().toString();
                         System.out.println("Date CellValue : " + cellValue);
-                        break;
                     } else {
-                       cellValue = Double.toString(cell.getNumericCellValue());
+                        cellValue = String.valueOf(cell.getNumericCellValue());
                         System.out.println("Salary CellValue : " + cellValue);
-                       break;
                     }
+                    break;
                 default:
                     break;
             }
@@ -137,8 +137,8 @@ public class ExcelFileReader extends JFrame {
         return cellValue;
     }
 
-    private ArrayList<String> fetchDataFromDatabase() throws SQLException {
-        ArrayList<String> dataFromDatabase = new ArrayList<>();
+    private Set<String> fetchDataFromDatabase() throws SQLException {
+        Set<String> dataFromDatabase = new HashSet<>();
 
         String url = "jdbc:mysql://localhost:3306/excel_test";
         String username = "root";
@@ -150,7 +150,6 @@ public class ExcelFileReader extends JFrame {
 
         try {
             connection = DriverManager.getConnection(url, username, password);
-
             statement = connection.createStatement();
 
             String query = "SELECT employee_name FROM employee";
@@ -171,12 +170,11 @@ public class ExcelFileReader extends JFrame {
                 connection.close();
             }
         }
-        System.out.println("List of Database : " + dataFromDatabase.size());
+
         return dataFromDatabase;
     }
 
-    private void storeDifferentDataInDatabase(ArrayList<String> differentDataList) throws SQLException {
-
+    private void storeDifferentDataInDatabase(Set<String> differentDataList) throws SQLException {
         String url = "jdbc:mysql://localhost:3306/excel_test";
         String username = "root";
         String password = "lynn471997";
@@ -192,6 +190,15 @@ public class ExcelFileReader extends JFrame {
 
             for (String value : differentDataList) {
                 if (value != null && !value.isEmpty()) {
+
+                 /*   double salary = 0.0; // Default value for non-numeric values
+                    try {
+                        salary = Double.parseDouble(value);
+                    } catch (NumberFormatException e) {
+                        logTextArea.setText(e.getMessage());
+                        continue;
+                    }*/
+
                     preparedStatement.setString(1, value);
                     preparedStatement.setString(2, value);
                     preparedStatement.setString(3, value);
