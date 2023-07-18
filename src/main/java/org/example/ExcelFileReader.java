@@ -69,7 +69,8 @@ public class ExcelFileReader extends JFrame {
             int dbDuplicateCount = 0;
 
             // Iterate over rows
-            for (Row row : sheet) {
+            for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                Row row = sheet.getRow(rowIndex);
                 List<String> rowData = new ArrayList<>(); // ArrayList to store the cells of each row
 
                 // Iterate over cells in the row
@@ -80,20 +81,32 @@ public class ExcelFileReader extends JFrame {
                     System.out.println("Row Data: " + rowData);
                 }
 
-                // Check if the row is duplicate
-                if (!uniqueRows.contains(rowData)) {
+                // Check if the row is duplicate based on relevant columns
+                boolean isDuplicate = false;
+                for (List<String> existingRow : uniqueRows) {
+                    // Compare relevant columns (e.g., excluding the ID column)
+                    if (existingRow.subList(1, existingRow.size()).equals(rowData.subList(1, rowData.size()))) {
+                        isDuplicate = true;
+                        break;
+                    }
+                }
+
+                if (!isDuplicate) {
                     uniqueRows.add(rowData);
-                    excelRows.add(rowData); // Add the row data to the ArrayList
+                    excelRows.add(rowData);
                 } else {
                     excelDuplicateCount++;
                 }
-
-                System.out.println("Unique Rows: " + uniqueRows);
-                System.out.println("Excel Rows: " + excelRows);
             }
+            System.out.println("Unique Rows: " + uniqueRows);
+            System.out.println("Excel Rows: " + excelRows);
 
             List<String> rowsFromDb = fetchDataFromDatabase();
             List<List<String>> nonDuplicateRows = new ArrayList<>();
+
+            if (rowsFromDb.isEmpty()){
+                storeNonDuplicateRowsInDatabase(excelRows);
+            }
 
             for (List<String> row : excelRows) {
                 if (!rowsFromDb.contains(row.get(1))) {
@@ -102,13 +115,14 @@ public class ExcelFileReader extends JFrame {
                     dbDuplicateCount++;
                 }
             }
+
+            storeNonDuplicateRowsInDatabase(nonDuplicateRows);
+
             excelRows.clear();
             uniqueRows.clear();
             fis.close();
             workbook.close();
 
-            // Store non-duplicate rows in the database
-            storeNonDuplicateRowsInDatabase(nonDuplicateRows);
 
             logTextArea.setText("Data imported successfully. Excel Duplicate Count: " + excelDuplicateCount
                     + " and Database Duplicate Count: " + dbDuplicateCount);
@@ -117,7 +131,6 @@ public class ExcelFileReader extends JFrame {
             logTextArea.setText("Error occurred: " + ex.getMessage());
         }
     }
-
     private String getCellValueAsString(Cell cell) {
         String cellValue = "";
         if (cell != null) {
@@ -149,7 +162,7 @@ public class ExcelFileReader extends JFrame {
 
         try {
             connection = DriverManager.getConnection(url, username, password);
-
+            connection.setAutoCommit(true);
             String query = "INSERT INTO employee (employee_name, position, department, salary, joined_date) VALUES (?, ?, ?, ?, ?)";
             preparedStatement = connection.prepareStatement(query);
             for (List<String> value : uniqueRows) {
@@ -157,10 +170,22 @@ public class ExcelFileReader extends JFrame {
                     preparedStatement.setString(2, value.get(2));
                     preparedStatement.setString(3, value.get(3));
                     preparedStatement.setDouble(4, Double.parseDouble(value.get(4)));
-                    preparedStatement.setDate(5, Date.valueOf(value.get(5)));
+
+                    String dateString = value.get(5);
+                    Date date;
+                    try{
+                        date = Date.valueOf(dateString);
+                    }catch (IllegalArgumentException ex) {
+                        logTextArea.setText("Invalid date format " + dateString );
+                        return;
+                    }
+                    preparedStatement.setDate(5, date);
                     preparedStatement.executeUpdate();
             }
+            connection.commit();
         } catch (SQLException e) {
+            System.out.println("Error occurred while inserting data: " + e.getMessage());
+            e.printStackTrace();
             throw new RuntimeException(e);
         } finally {
             if (preparedStatement != null) {
@@ -185,17 +210,12 @@ public class ExcelFileReader extends JFrame {
                  ResultSet resultSet = preparedStatement.executeQuery()) {
                 while (resultSet.next()) {
                      String dbRow =resultSet.getString("employee_name");
-                    /*row.add(resultSet.getString("position"));
-                    row.add(resultSet.getString("department"));
-                    row.add(String.valueOf(resultSet.getDouble("salary")));
-                    row.add(resultSet.getString("joined_date"));*/
-                    dbRows.add(dbRow);
+                      dbRows.add(dbRow);
                 }
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-
         return dbRows;
     }
 

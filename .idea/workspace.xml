@@ -51,21 +51,13 @@
       <workItem from="1689300797136" duration="13722000" />
       <workItem from="1689322844115" duration="2278000" />
       <workItem from="1689559672960" duration="19826000" />
+      <workItem from="1689645948107" duration="6308000" />
+      <workItem from="1689652442516" duration="4414000" />
+      <workItem from="1689657363263" duration="350000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" type="java-line">
-          <url>file://$PROJECT_DIR$/src/main/java/org/example/ExcelFileReader.java</url>
-          <line>154</line>
-          <option name="timeStamp" value="1" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
   </component>
 </project>
