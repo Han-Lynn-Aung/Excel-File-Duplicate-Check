@@ -8,6 +8,7 @@ import java.awt.*;
 import java.io.File;
 import java.io.FileInputStream;
 import java.sql.*;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -55,7 +56,6 @@ public class ExcelFileReader extends JFrame {
             }
         });
     }
-
     private void importData(File selectedFile) {
         try {
             FileInputStream fis = new FileInputStream(selectedFile);
@@ -63,7 +63,6 @@ public class ExcelFileReader extends JFrame {
             Sheet sheet = workbook.getSheetAt(0);
 
             List<List<String>> excelRows = new ArrayList<>(); // ArrayList to store the rows
-            Set<List<String>> uniqueRows = new HashSet<>(); // Set to store unique rows
 
             int excelDuplicateCount = 0;
             int dbDuplicateCount = 0;
@@ -71,58 +70,55 @@ public class ExcelFileReader extends JFrame {
             // Iterate over rows
             for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
                 Row row = sheet.getRow(rowIndex);
-                List<String> rowData = new ArrayList<>(); // ArrayList to store the cells of each row
 
-                // Iterate over cells in the row
-                for (Cell cell : row) {
-                    // Get the cell value as a String
-                    String cellValue = getCellValueAsString(cell);
-                    rowData.add(cellValue);
-                    System.out.println("Row Data: " + rowData);
+                // Get the cell value of the first column (employee name)
+                Cell nameCell = row.getCell(1);
+                String name = getCellValueAsString(nameCell);
+
+                // Check if the name already exists in the database
+                List<String> rowsFromDb = fetchDataFromDatabase();
+                if (rowsFromDb.contains(name)) {
+                    dbDuplicateCount++;
+                    continue;
                 }
 
-                // Check if the row is duplicate based on relevant columns
+                // Check if the name already exists in the excelRows list
                 boolean isDuplicate = false;
-                for (List<String> existingRow : uniqueRows) {
-                    // Compare relevant columns (e.g., excluding the ID column)
-                    if (existingRow.subList(1, existingRow.size()).equals(rowData.subList(1, rowData.size()))) {
+                for (List<String> existingRow : excelRows) {
+                    if (existingRow.get(0).equals(name)) {
                         isDuplicate = true;
                         break;
                     }
                 }
 
                 if (!isDuplicate) {
-                    uniqueRows.add(rowData);
+                    List<String> rowData = new ArrayList<>(); // Move the rowData list inside the loop
+
+                    // Iterate over cells in the row, starting from the second column (index 1)
+                    for (int cellIndex = 1; cellIndex < row.getLastCellNum(); cellIndex++) {
+                        Cell cell = row.getCell(cellIndex);
+                        // Get the cell value as a String
+                        String cellValue = getCellValueAsString(cell);
+                        rowData.add(cellValue);
+                    }
+
                     excelRows.add(rowData);
                 } else {
                     excelDuplicateCount++;
                 }
             }
-            System.out.println("Unique Rows: " + uniqueRows);
-            System.out.println("Excel Rows: " + excelRows);
 
-            List<String> rowsFromDb = fetchDataFromDatabase();
-            List<List<String>> nonDuplicateRows = new ArrayList<>();
+            // Insert non-duplicate rows into the database
+            storeNonDuplicateRowsInDatabase(excelRows);
 
-            if (rowsFromDb.isEmpty()){
-                storeNonDuplicateRowsInDatabase(excelRows);
-            }
-
+            List<String> excelNames = new ArrayList<>();
             for (List<String> row : excelRows) {
-                if (!rowsFromDb.contains(row.get(1))) {
-                    nonDuplicateRows.add(row);
-                } else {
-                    dbDuplicateCount++;
-                }
+                excelNames.add(row.get(0));
             }
-
-            storeNonDuplicateRowsInDatabase(nonDuplicateRows);
 
             excelRows.clear();
-            uniqueRows.clear();
             fis.close();
             workbook.close();
-
 
             logTextArea.setText("Data imported successfully. Excel Duplicate Count: " + excelDuplicateCount
                     + " and Database Duplicate Count: " + dbDuplicateCount);
@@ -131,6 +127,7 @@ public class ExcelFileReader extends JFrame {
             logTextArea.setText("Error occurred: " + ex.getMessage());
         }
     }
+
     private String getCellValueAsString(Cell cell) {
         String cellValue = "";
         if (cell != null) {
@@ -140,8 +137,11 @@ public class ExcelFileReader extends JFrame {
                     break;
                 case NUMERIC:
                     if (DateUtil.isCellDateFormatted(cell)) {
-                        cellValue = cell.getDateCellValue().toString();
+                        // Convert date cell to a formatted string using a custom date format
+                        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+                        cellValue = dateFormat.format(cell.getDateCellValue());
                     } else {
+                        // Convert numeric cell to a string
                         cellValue = String.valueOf(cell.getNumericCellValue());
                     }
                     break;
@@ -162,27 +162,17 @@ public class ExcelFileReader extends JFrame {
 
         try {
             connection = DriverManager.getConnection(url, username, password);
-            connection.setAutoCommit(true);
             String query = "INSERT INTO employee (employee_name, position, department, salary, joined_date) VALUES (?, ?, ?, ?, ?)";
             preparedStatement = connection.prepareStatement(query);
             for (List<String> value : uniqueRows) {
-                    preparedStatement.setString(1, value.get(1));
-                    preparedStatement.setString(2, value.get(2));
-                    preparedStatement.setString(3, value.get(3));
-                    preparedStatement.setDouble(4, Double.parseDouble(value.get(4)));
+                preparedStatement.setString(1, value.get(0));
+                preparedStatement.setString(2, value.get(1));
+                preparedStatement.setString(3, value.get(2));
+                preparedStatement.setDouble(4, Double.parseDouble(value.get(3)));
+                preparedStatement.setString(5, value.get(4));
 
-                    String dateString = value.get(5);
-                    Date date;
-                    try{
-                        date = Date.valueOf(dateString);
-                    }catch (IllegalArgumentException ex) {
-                        logTextArea.setText("Invalid date format " + dateString );
-                        return;
-                    }
-                    preparedStatement.setDate(5, date);
-                    preparedStatement.executeUpdate();
+                preparedStatement.executeUpdate();
             }
-            connection.commit();
         } catch (SQLException e) {
             System.out.println("Error occurred while inserting data: " + e.getMessage());
             e.printStackTrace();
@@ -196,6 +186,7 @@ public class ExcelFileReader extends JFrame {
             }
         }
     }
+
 
     private List<String> fetchDataFromDatabase() {
         String url = "jdbc:mysql://localhost:3306/excel_test";
